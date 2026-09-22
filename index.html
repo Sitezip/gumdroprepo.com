@@ -1,1 +1,302 @@
-gumdroprepo.com here
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>gumdroprepo — a home for markdown gumdrops</title>
+  <meta name="description" content="Save, version, search and share the markdown files you reuse everywhere: prompts, skills, READMEs, rules and specs.">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="images/gdr.logo.png">
+  <script>
+    // set the theme before first paint to avoid a flash
+    (function () {
+      var t = null;
+      try { t = localStorage.getItem('gdrTheme'); } catch (e) {}
+      if (t !== 'light' && t !== 'dark') {
+        t = (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+      }
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
+        integrity="sha512-SnH5WK+bZxgPHs44uWIX+LLJAJ9/2PkPKZ5QiAj6Ta86w+fsb2TkcmfRyVX3pBnMFcV7oQPJkl9QevSCWr3W6A=="
+        crossorigin="anonymous" referrerpolicy="no-referrer">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="container hdr">
+      <a class="brand" href="#/" aria-label="gumdroprepo home"><i class="fa-solid fa-tree"></i><span>gumdrop<b>repo</b></span></a>
+
+      <nav id="nav" aria-label="Main">
+        <div class="dd" id="ddGumdrops">
+          <button class="nav-link" type="button" data-act="toggleMenu" aria-haspopup="true" aria-expanded="false">
+            <i class="fa-solid fa-candy-cane"></i> Gumdrops <i class="fa-solid fa-caret-down"></i>
+          </button>
+          <div class="dd-menu" role="menu">
+            <a href="#/gumdrops/add" role="menuitem"><i class="fa-solid fa-plus"></i> Add</a>
+            <a href="#/gumdrops" role="menuitem"><i class="fa-solid fa-list"></i> View</a>
+            <button type="button" data-act="search" role="menuitem"><i class="fa-solid fa-magnifying-glass"></i> Search</button>
+          </div>
+        </div>
+        <button class="nav-link" type="button" data-act="contact"><i class="fa-solid fa-envelope"></i> Contact</button>
+        <span class="nav-spacer"></span>
+        <div id="auth"></div>
+      </nav>
+
+      <div class="hdr-tools">
+        <button class="icon-btn" type="button" data-act="search" aria-label="Search gumdrops" title="Search"><i class="fa-solid fa-magnifying-glass"></i></button>
+        <button class="icon-btn theme-toggle" type="button" data-act="theme" aria-label="Toggle light/dark mode" title="Toggle theme">
+          <i class="fa-solid fa-moon"></i><i class="fa-solid fa-sun"></i>
+        </button>
+        <button class="icon-btn nav-toggle" type="button" data-act="toggleNav" aria-label="Menu" aria-controls="nav" aria-expanded="false"><i class="fa-solid fa-bars"></i></button>
+      </div>
+    </div>
+  </header>
+
+  <main id="view" class="site-main container" aria-live="polite"></main>
+
+  <footer class="site-footer">
+    <div class="container ftr">
+      <span>&copy; <span id="year"></span> gumdroprepo.com</span>
+      <nav aria-label="Footer">
+        <a href="#/gumdrops"><i class="fa-solid fa-list"></i> Gumdrops</a>
+        <button class="link" type="button" data-act="search"><i class="fa-solid fa-magnifying-glass"></i> Search</button>
+        <button class="link" type="button" data-act="contact"><i class="fa-solid fa-envelope"></i> Contact</button>
+      </nav>
+    </div>
+  </footer>
+
+  <dialog id="modal" class="modal" aria-labelledby="modalTitle">
+    <div class="modal-head">
+      <h2 id="modalTitle"></h2>
+      <button class="icon-btn" type="button" data-act="close" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </dialog>
+
+  <div id="toastContainer" class="toast-container" popover="manual" role="status" aria-live="polite"></div>
+
+  <!-- core.js template registry. NOTE: core unescape()s template text, so never put a percent sign in here. -->
+  <section id="cr-data" style="display:none">
+
+    <template name="tplHome">
+      <section class="hero">
+        <img class="hero-logo" src="images/gdr.logo.png" alt="gumdroprepo" width="336" height="189">
+        <h1 class="tagline">Markdown, by the gumdrop.</h1>
+        <p class="lede">
+          gumdroprepo is a simple home for the small markdown files you reuse everywhere &mdash; prompts, skills,
+          READMEs, rules and specs. Save each one as a versioned gumdrop, keep your library private, search the
+          public index, and share any version with a link or a short link. Every edit is a new version, so a shared
+          link never changes underneath you.
+        </p>
+        <div class="hero-cta">
+          <a class="btn primary lg" href="#/gumdrops/add"><i class="fa-solid fa-plus"></i> Add a gumdrop</a>
+          <a class="btn lg" href="#/gumdrops"><i class="fa-solid fa-list"></i> View my gumdrops</a>
+          <button class="btn lg" type="button" data-act="search"><i class="fa-solid fa-magnifying-glass"></i> Search</button>
+        </div>
+      </section>
+      <section class="home-gumdrops">
+        <div class="page-head">
+          <h2 id="homeGumdropsHead"></h2>
+          <span id="homeGumdropsCta"></span>
+        </div>
+        <div id="homeGumdropsBody"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading&hellip;</div></div>
+      </section>
+      <section class="features" aria-label="Highlights">
+        <div class="feature"><i class="fa-solid fa-code-branch"></i><h3>Versioned</h3><p>Every save is a new version with its own id, so history is never overwritten.</p></div>
+        <div class="feature"><i class="fa-solid fa-magnifying-glass"></i><h3>Searchable</h3><p>Only names, types and versions are public. The file itself stays retrievable by its id.</p></div>
+        <div class="feature"><i class="fa-solid fa-link"></i><h3>Shareable</h3><p>Send a plain URL or a short link to any version of any gumdrop.</p></div>
+      </section>
+    </template>
+
+    <template name="tplHomeGumdrops">
+      <ul class="repo-list">
+        <li class="repo-item core-clone" data-core-data="homeRows">
+          <a class="repo-name" href="{{rec:href}}" {{rec:target}}><i class="fa-regular fa-file-lines"></i>{{rec:name}}</a>
+          <span class="badge">{{rec:type}}</span>
+          <p class="repo-meta"><span>v{{rec:version}}</span><span class="dot"></span><span>by {{rec:author}}</span></p>
+        </li>
+      </ul>
+    </template>
+
+    <template name="tplLoading">
+      <div class="page"><div class="loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading&hellip;</div></div>
+    </template>
+
+    <template name="tplNeedLogin">
+      <div class="page">
+        <div class="center-msg">
+          <i class="fa-solid fa-lock"></i>
+          <p>Log in to see the gumdrops in your library.</p>
+          <button class="btn primary" type="button" data-act="login"><i class="fa-solid fa-right-to-bracket"></i> Log in</button>
+          <button class="btn" type="button" data-act="signup"><i class="fa-solid fa-user-plus"></i> Sign up</button>
+        </div>
+      </div>
+    </template>
+
+    <template name="tplNotFound">
+      <div class="page">
+        <div class="center-msg">
+          <i class="fa-solid fa-circle-question"></i>
+          <p>We couldn't find that gumdrop.</p>
+          <a class="btn" href="#/gumdrops">Back to your gumdrops</a>
+        </div>
+      </div>
+    </template>
+
+    <template name="tplList">
+      <div class="page">
+        <div class="page-head">
+          <h1><i class="fa-solid fa-candy-cane"></i> Your gumdrops</h1>
+          <div class="actions">
+            <a class="btn primary" href="#/gumdrops/add"><i class="fa-solid fa-plus"></i> Add</a>
+          </div>
+        </div>
+        <div class="filter">
+          <input id="listFilter" class="form-control" type="search" placeholder="Filter your gumdrops&hellip;" aria-label="Filter your gumdrops" autocomplete="off">
+        </div>
+        <div id="listEmpty" class="empty" hidden>
+          <i class="fa-regular fa-face-smile"></i>
+          <p>Nothing here yet. Add your first gumdrop.</p>
+        </div>
+        <ul class="repo-list" id="listItems">
+          <li class="repo-item core-clone" data-core-data="gumdropRows">
+            <a class="repo-name" href="#/gumdrops/{{rec:nameUrl}}"><i class="fa-regular fa-file-lines"></i>{{rec:name}}</a>
+            <span class="badge">{{rec:type}}</span>
+            <p class="repo-meta">
+              <span>v{{rec:latest}}</span><span class="dot"></span><span>{{rec:countLabel}}</span><span class="dot"></span><span>updated {{rec:updated}}</span><span class="dot"></span><span>by {{rec:author}}</span>
+            </p>
+          </li>
+        </ul>
+      </div>
+    </template>
+
+    <template name="tplHistory">
+      <div class="page">
+        <div class="core-clone" data-core-data="historyHead">
+          <nav class="crumbs"><a href="#/gumdrops">Gumdrops</a><i class="fa-solid fa-chevron-right sep"></i><span>{{rec:name}}</span></nav>
+          <div class="page-head">
+            <h1><i class="fa-regular fa-file-lines"></i>{{rec:name}} <span class="badge">{{rec:type}}</span></h1>
+            <div class="actions"><a class="btn" href="#/gumdrops/{{rec:nameUrl}}/{{rec:mdId}}/edit"><i class="fa-solid fa-pen"></i> Edit latest</a></div>
+          </div>
+          <p class="page-sub">{{rec:countLabel}}. Pick a version to view its details and share it.</p>
+        </div>
+        <ul class="repo-list">
+          <li class="repo-item core-clone" data-core-data="historyRows">
+            <a class="repo-name" href="{{rec:href}}"><i class="fa-solid fa-code-commit"></i>v{{rec:version}}</a>
+            {{rec:latestBadge}}
+            <p class="repo-meta">
+              <span>{{rec:updated}}</span><span class="dot"></span><span>by {{rec:author}}</span><span class="dot"></span><span class="mono">{{rec:mdIdShort}}</span>
+            </p>
+          </li>
+        </ul>
+      </div>
+    </template>
+
+    <template name="tplDetail">
+      <div class="page core-clone" data-core-data="detailRows">
+        <nav class="crumbs">
+          <a href="#/gumdrops">Gumdrops</a><i class="fa-solid fa-chevron-right sep"></i>
+          <a href="#/gumdrops/{{rec:nameUrl}}">{{rec:name}}</a><i class="fa-solid fa-chevron-right sep"></i>
+          <span>v{{rec:version}}</span>
+        </nav>
+        <div class="page-head">
+          <h1><i class="fa-regular fa-file-lines"></i>{{rec:name}} <span class="badge">{{rec:type}}</span></h1>
+          <div class="actions">
+            <a class="btn" href="#/gumdrops/{{rec:nameUrl}}"><i class="fa-solid fa-clock-rotate-left"></i> History</a>
+            <a class="btn primary" href="#/gumdrops/{{rec:nameUrl}}/{{rec:mdId}}/edit"><i class="fa-solid fa-pen"></i> Edit</a>
+          </div>
+        </div>
+
+        <div class="box">
+          <div class="box-head"><span><i class="fa-solid fa-circle-info"></i> Details</span></div>
+          <div class="box-body">
+            <dl class="meta-grid">
+              <div><dt>Version</dt><dd>{{rec:version}}</dd></div>
+              <div><dt>Type</dt><dd>{{rec:type}}</dd></div>
+              <div><dt>Author</dt><dd>{{rec:author}}</dd></div>
+              <div><dt>Updated</dt><dd>{{rec:updated}}</dd></div>
+              <div><dt>Gumdrop id</dt><dd class="mono">{{rec:mdId}}</dd></div>
+            </dl>
+          </div>
+        </div>
+
+        <div class="box">
+          <div class="box-head"><span><i class="fa-solid fa-share-nodes"></i> Share</span></div>
+          <div class="box-body">
+            <div class="share-row">
+              <label for="shareUrl">Link</label>
+              <div class="copy-row">
+                <input id="shareUrl" class="form-control" type="text" readonly value="{{rec:mdUrl}}">
+                <button class="btn" type="button" data-act="copy" data-from="#shareUrl"><i class="fa-regular fa-copy"></i> Copy</button>
+                <a class="btn" id="openMd" href="{{rec:mdUrl}}" target="_blank" rel="noopener"><i class="fa-solid fa-arrow-up-right-from-square"></i> Open</a>
+              </div>
+            </div>
+            <div class="share-row">
+              <label for="shortUrl">Short link</label>
+              <div class="copy-row">
+                <input id="shortUrl" class="form-control" type="text" readonly placeholder="Not created yet">
+                <button class="btn" type="button" id="shortBtn" data-act="shortlink"><i class="fa-solid fa-link"></i> Create</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="box">
+          <div class="box-head">
+            <span><i class="fa-brands fa-markdown"></i> {{rec:name}}.md</span>
+            <span class="actions">
+              <button class="btn sm" type="button" data-act="copy" data-from="#mdText"><i class="fa-regular fa-copy"></i> Copy</button>
+              <button class="btn sm" type="button" data-act="download"><i class="fa-solid fa-download"></i> Download</button>
+            </span>
+          </div>
+          <pre class="md-view" id="mdText"></pre>
+        </div>
+      </div>
+    </template>
+
+    <template name="tplForm">
+      <div class="page narrow">
+        <div class="core-clone" data-core-data="formHead">
+          <nav class="crumbs"><a href="#/gumdrops">Gumdrops</a><i class="fa-solid fa-chevron-right sep"></i><span>{{rec:crumb}}</span></nav>
+          <div class="page-head"><h1><i class="fa-solid {{rec:icon}}"></i>{{rec:title}}</h1></div>
+          <div class="alert info">{{rec:note}}</div>
+        </div>
+        <div id="gumdropForm" class="box-body box"></div>
+      </div>
+    </template>
+
+    <template name="tplSearchResults">
+      <div class="search-out">
+        <div class="table-wrap">
+          <table class="tbl">
+            <thead><tr><th>Name</th><th>Version</th><th>Type</th><th>Author</th><th>Id</th><th></th></tr></thead>
+            <tbody>
+              <tr class="core-clone" data-core-data="searchRows">
+                <td><i class="fa-regular fa-file-lines"></i> {{rec:name}}</td>
+                <td>{{rec:version}}</td>
+                <td><span class="badge">{{rec:type}}</span></td>
+                <td>{{rec:author}}</td>
+                <td class="mono">{{rec:mdIdShort}}</td>
+                <td>
+                  <span class="row-actions">
+                    <a class="btn sm" href="{{rec:mdUrl}}" target="_blank" rel="noopener" aria-label="Open {{rec:name}}"><i class="fa-solid fa-arrow-up-right-from-square"></i> Open</a>
+                    <button class="btn sm" type="button" data-act="searchShare" data-mdid="{{rec:mdId}}" data-name="{{rec:name}}" aria-label="Copy a short link to {{rec:name}}"><i class="fa-solid fa-link"></i> Share</button>
+                    <button class="btn sm" type="button" data-act="searchEdit" data-mdid="{{rec:mdId}}" data-name="{{rec:name}}" data-type="{{rec:type}}" data-version="{{rec:version}}" aria-label="Edit {{rec:name}}"><i class="fa-solid fa-pen"></i> Edit</button>
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </template>
+
+  </section>
+
+  <script src="https://cdn.jsdelivr.net/gh/Sitezip/core.sbs@20260909.0/core.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
