@@ -383,12 +383,8 @@
 
   // Saves a gumdrop and returns the saved private record, exactly as zenPost handed it back — no re-fetch needed.
   async function saveGumdrop(v) {
-    // both records are required for every create
     const priv = { type: v.type, name: v.name, md: v.md, version: v.version, mdId: v.mdId, author: v.author };
     const userhash = state.session?.userhash;
-    // the public entry no longer needs to carry userhash — authenticated search finds the private record
-    // directly by the -{userhash} suffix already in its own zen name (confirmed against the real API)
-    const pub = { author: maskUser(v.author), type: v.type, name: v.name, version: v.version, mdId: v.mdId };
 
     // 1) the file itself — posted with publicAuthCd when signed in, named gdrapp-{mdId}-{userhash} so this
     // user's own records can be found again later (see loadLibrary/findMd). Anonymous saves have no userhash
@@ -399,13 +395,17 @@
     if (!a?.success) throw fail(a, 'Could not save the gumdrop.');
     const saved = flat(a.response?.[0]) || priv;
 
-    // 2) the searchable entry — always public, so never sends publicAuthCd
-    const b = await zz('zzPostQ', 'Collections/zenPost', {
-      query: { group: SETTINGS.group, name: `gdrq-${v.name}-${v.version}-${v.mdId}` }, body: { json: pub }, auth: false,
-    });
-    if (!b?.success) {
-      if (saved.zen) { try { await zz('zzDelMd', 'Collections/zenDelete', { query: { zen: saved.zen } }); } catch (e) { /* best effort */ } }
-      throw fail(b, 'Could not add the gumdrop to search, so nothing was saved. Please try again.');
+    // 2) the searchable entry — skipped entirely for a private save. Still public when it IS posted (never
+    // sends publicAuthCd): the point of the toggle is to opt out of the index, not to make this entry auth-scoped.
+    if (!v.isPrivate) {
+      const pub = { author: maskUser(v.author), type: v.type, name: v.name, version: v.version, mdId: v.mdId };
+      const b = await zz('zzPostQ', 'Collections/zenPost', {
+        query: { group: SETTINGS.group, name: `gdrq-${v.name}-${v.version}-${v.mdId}` }, body: { json: pub }, auth: false,
+      });
+      if (!b?.success) {
+        if (saved.zen) { try { await zz('zzDelMd', 'Collections/zenDelete', { query: { zen: saved.zen } }); } catch (e) { /* best effort */ } }
+        throw fail(b, 'Could not add the gumdrop to search, so nothing was saved. Please try again.');
+      }
     }
     return saved;
   }
@@ -521,6 +521,7 @@
   /** Validate a rendered form with core.sv.scrub, using the data-scrubs the Forms API put on each field. */
   function readForm(form) {
     const arr = $$('input[name],select[name],textarea[name]', form).map((el) => {
+      if (el.type === 'checkbox') return { name: el.name, value: el.checked ? '1' : '', scrubs: [], el };
       let value = String(el.value ?? '');
       if (el.type !== 'password') value = el.name === 'md' ? value.replace(/\s+$/, '') : value.trim();
       const scrubs = (el.dataset.scrubs || '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -969,6 +970,12 @@
           '<div class="form-tools"><span class="hint">Markdown only &mdash; it is stored and shown as plain text.</span>' +
           '<button class="btn sm" type="button" data-act="pickfile"><i class="fa-solid fa-file-import"></i> Load from a file</button>' +
           '<input type="file" id="mdFile" accept=".md,.markdown,.txt,text/markdown,text/plain" hidden></div>');
+        // client-side only — simply skips the public gdrq- post below, so it's independent of sign-in state
+        // and (deliberately) doesn't try to remember a past version's own choice
+        verEl.closest('.col-12')?.insertAdjacentHTML('afterend',
+          '<div class="col-12 mt-2 form-check">' +
+          '<label class="form-check-label"><input type="checkbox" class="form-check-input" name="isPrivate">' +
+          ' Keep this version private &mdash; don&rsquo;t add it to the public search index</label></div>');
         (isEdit || draft ? mdEl : nameEl).focus();
       },
     });
@@ -996,8 +1003,9 @@
     setBusy(form, true);
     try {
       // the check above only covers this session's own library; names aren't scoped per user, so also check
-      // the public index for the same name + version under a different mdId (a different author, or another tab)
-      const dupe = await findCollision(v.name, v.version);
+      // the public index for the same name + version under a different mdId (a different author, or another tab).
+      // Skipped for a private save — it never touches that index, so there's nothing there to collide with.
+      const dupe = v.isPrivate ? null : await findCollision(v.name, v.version);
       if (dupe) {
         fieldError(form, 'version', `v${v.version} of "${v.name}" already exists` + (dupe.author ? ` (by ${dupe.author})` : '') + '. Choose a different version.');
         setBusy(form, false);
@@ -1006,12 +1014,13 @@
       const saved = await saveGumdrop(v);
       if (state.session) {
         rememberRecord(saved);
-        notify('Gumdrop saved');
+        notify(v.isPrivate ? 'Gumdrop saved privately' : 'Gumdrop saved');
         location.hash = `#/gumdrops/${encodeURIComponent(saved.name)}/${encodeURIComponent(saved.mdId)}`;
       } else {
         const url = mdUrlOf(v.name, v.mdId);
         host.innerHTML = `<div class="alert ok"><i class="fa-solid fa-circle-check"></i> Saved <b>${esc(v.name)}</b> v${esc(v.version)}.<br>` +
-          `Its link: <a href="${esc(url)}" target="_blank" rel="noopener">${esc(url)}</a></div>` +
+          `Its link: <a href="${esc(url)}" target="_blank" rel="noopener">${esc(url)}</a>` +
+          (v.isPrivate ? '<br><span class="hint">Kept private &mdash; not added to the public search index.</span>' : '') + '</div>' +
           '<a class="btn" href="#/gumdrops/add"><i class="fa-solid fa-plus"></i> Add another</a>';
         delete host.dataset.form;
       }
