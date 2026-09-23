@@ -725,7 +725,9 @@
   /* ── search ── */
   async function openSearch() {
     openModal('Search gumdrops', true);
-    await mountForm('#mForm', 'search', ['Search{{q}}>req|min:2|max:100|nohtml'], {
+    $('#mForm').insertAdjacentHTML('beforebegin',
+      '<p class="hint">Searches gumdrop names only, across the public index &mdash; not authors, types or file content.</p>');
+    await mountForm('#mForm', 'search', ['Gumdrop name{{q}}>req|min:2|max:100|nohtml'], {
       submit: '<i class="fa-solid fa-magnifying-glass"></i> Search',
       ready: (form) => focusFirst(form),
       onSubmit: runSearch,
@@ -739,8 +741,9 @@
     setMsg(host, '');
     setBusy(form, true);
     try {
-      // sends publicAuthCd when logged in — required for a search to surface the caller's own gdrapp- records
-      const d = await zz('zzSearch', 'Collections/zenSearch', { query: { q: v.q } });
+      // gdrq- scopes this to the public index and only matches on name; always anonymous — a public record
+      // search has no business carrying publicAuthCd, unlike the userhash-based lookups elsewhere in this file
+      const d = await zz('zzSearch', 'Collections/zenSearch', { query: { q: 'gdrq-' + v.q }, auth: false });
       if (!d?.success) throw fail(d, 'Search failed. Please try again.');
       const seen = new Set();
       const rows = (Array.isArray(d.response) ? d.response : [])   // no hits comes back as a message string
