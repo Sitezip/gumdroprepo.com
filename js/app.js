@@ -17,6 +17,20 @@
 
   /* ───────────────────────── settings ───────────────────────── */
 
+  // The stored/submitted value is always the slug (key) — label/detail are display-only, spliced into the
+  // rendered <select> client-side, since the Forms API's microFormat select widget has no way to give an
+  // option its own display text (ZZZAP.FORMS.md §3.2 — value and shown text are always the same string).
+  const TYPE_INFO = {
+    doc: { label: 'Doc', detail: 'General documentation or reference material' },
+    readme: { label: 'Readme', detail: 'A project overview or getting-started guide' },
+    skill: { label: 'Skill', detail: 'A reusable Claude or agent skill definition' },
+    agent: { label: 'Agent', detail: 'An agent or subagent persona/definition' },
+    prompt: { label: 'Prompt', detail: 'A reusable prompt or prompt template' },
+    rules: { label: 'Rules', detail: 'House rules, conventions or guidelines' },
+    spec: { label: 'Spec', detail: 'A technical specification or design note' },
+    other: { label: 'Other', detail: "Anything that doesn't fit the categories above" },
+  };
+
   const SETTINGS = {
     group: 'gumdroprepo.com',             // zen group for every record
     viewDomainAs: 'gumdroprepo.com',      // sent on signIn + signUp
@@ -24,7 +38,7 @@
     contactSubdomain: '5a8495eadf9463b113d69d049ff7ad16',
     contactTo: null, // relay recipient ("cc") — confirm this mailbox
     shortBaseUrl: 'https://0sp.in/', //'https://gumdroprepo.com/', // domain the short links are minted under
-    types: ['doc', 'readme', 'skill', 'agent', 'prompt', 'rules', 'spec', 'other'],
+    types: Object.keys(TYPE_INFO),
   };
   // keep local dev data out of the real production collection
   if (['localhost', '127.0.0.1'].includes(location.hostname)) SETTINGS.group += '-sandbox';
@@ -955,10 +969,24 @@
       ready: (form) => {
         const nameEl = $('[name=name]', form);
         const authorEl = $('[name=author]', form);
+        const typeEl = $('[name=type]', form);
         const mdEl = $('[name=md]', form);
         const verEl = $('[name=version]', form);
         mdEl.rows = 16;
         mdEl.placeholder = '# My gumdrop\n\nWrite or paste markdown here…';
+        // the option's value (what actually gets submitted) is left untouched — only its displayed text and
+        // the hint below the field change, since the Forms API select has no separate label per option
+        for (const opt of typeEl.options) {
+          const info = TYPE_INFO[opt.value];
+          if (!info) continue;
+          opt.textContent = `${info.label} — ${info.detail}`;
+          opt.title = info.detail;
+        }
+        typeEl.closest('.col-12')?.insertAdjacentHTML('afterend', '<div class="col-12"><p class="hint" id="typeHint"></p></div>');
+        const typeHint = $('#typeHint', form);
+        const showTypeHint = () => { typeHint.textContent = TYPE_INFO[typeEl.value]?.detail || ''; };
+        typeEl.addEventListener('change', showTypeHint);
+        showTypeHint();
         if (state.session) {
           authorEl.value = state.session.user;
           authorEl.readOnly = true;
