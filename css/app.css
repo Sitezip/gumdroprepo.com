@@ -87,7 +87,7 @@ code, pre, .mono { font-family: var(--mono); }
   margin-right: 8px;
 }
 .brand:hover { text-decoration: none; }
-.brand .fa-tree { color: #2da44e; }
+.brand .fa-cookie { color: #2da44e; }
 .brand b { color: var(--link); font-weight: 700; }
 
 .icon-btn.nav-toggle { display: none; }
