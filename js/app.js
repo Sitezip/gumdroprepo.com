@@ -757,7 +757,12 @@
         out.innerHTML = `<div class="empty"><i class="fa-regular fa-face-meh"></i><p>No gumdrops matched &ldquo;${esc(v.q)}&rdquo;.</p></div>`;
       } else {
         await paint('#mOut', 'tplSearchResults', { searchRows: rows });
-        $('#mOut')?.insertAdjacentHTML('afterbegin', `<p class="hint">${rows.length} result${rows.length === 1 ? '' : 's'}</p>`);
+        // client-side filter over the results already in hand — no re-search, just narrows what's shown
+        $('#mOut')?.insertAdjacentHTML('afterbegin',
+          `<p class="hint">${rows.length} result${rows.length === 1 ? '' : 's'}</p>` +
+          '<div class="filter"><input id="searchResultsFilter" class="form-control" type="search" ' +
+          'placeholder="Filter these results&hellip;" aria-label="Filter search results" autocomplete="off"></div>' +
+          '<div class="empty" id="searchResultsEmpty" hidden><i class="fa-regular fa-face-meh"></i><p></p></div>');
       }
     } catch (e) {
       if (!e.toasted) setMsg(host, esc(errMsg(e)));
@@ -1191,18 +1196,31 @@
 
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeMenu(); closeNav(); } });
 
-    document.addEventListener('input', (e) => {
-      if (e.target.id !== 'listFilter') return;
-      const q = e.target.value.trim().toLowerCase();
+    // client-side filter shared by any "type to narrow these rows" input — hides non-matching rows and
+    // shows/hides a companion empty-state block, without re-fetching anything
+    function filterRows(rowSelector, query, emptyEl, emptyMsg) {
+      const q = query.trim().toLowerCase();
       let shown = 0;
-      for (const li of $$('#listItems .repo-item')) {
-        const hit = !q || li.textContent.toLowerCase().includes(q);
-        li.hidden = !hit;
+      for (const row of $$(rowSelector)) {
+        const hit = !q || row.textContent.toLowerCase().includes(q);
+        row.hidden = !hit;
         if (hit) shown++;
       }
-      const empty = $('#listEmpty');
-      $('p', empty).textContent = state.groups.length ? 'No gumdrops match your filter.' : 'Nothing here yet. Add your first gumdrop.';
-      empty.hidden = shown > 0;
+      if (emptyEl) {
+        $('p', emptyEl).textContent = emptyMsg;
+        emptyEl.hidden = shown > 0;
+      }
+      return shown;
+    }
+
+    document.addEventListener('input', (e) => {
+      if (e.target.id === 'listFilter') {
+        filterRows('#listItems .repo-item', e.target.value, $('#listEmpty'),
+          state.groups.length ? 'No gumdrops match your filter.' : 'Nothing here yet. Add your first gumdrop.');
+      } else if (e.target.id === 'searchResultsFilter') {
+        const q = e.target.value.trim();
+        filterRows('#mOut tbody tr', q, $('#searchResultsEmpty'), q ? `No results match "${q}".` : 'No results.');
+      }
     });
 
     document.addEventListener('change', (e) => {
