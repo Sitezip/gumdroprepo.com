@@ -116,8 +116,19 @@
     return 0;
   }
 
-  // zts comes back as "YYYY-MM-DD HH:MM:SS" (assumed UTC), not a unix epoch — +rec.zts is always NaN.
-  const zTs = (rec) => { const t = Date.parse(String(rec?.zts || '').replace(' ', 'T') + 'Z'); return isNaN(t) ? 0 : t; };
+  // zts (and, once the backend starts writing it, hitTs) comes back as "YYYY-MM-DD HH:MM:SS" (assumed UTC),
+  // not a unix epoch — +rec.zts is always NaN.
+  const parseZDate = (raw) => { const t = Date.parse(String(raw || '').replace(' ', 'T') + 'Z'); return isNaN(t) ? 0 : t; };
+  const zTs = (rec) => parseZDate(rec?.zts);
+
+  // hitCount/hitTs live only on the public gdrq- record (saveGumdrop), defaulting to 0/null until the backend
+  // starts updating them on access.
+  function hitsLabel(r) {
+    const count = Number(r?.hitCount) || 0;
+    if (!count) return 'No hits yet';
+    const ts = parseZDate(r?.hitTs);
+    return `${count} hit${count === 1 ? '' : 's'}` + (ts ? ` &middot; last ${new Date(ts).toLocaleDateString()}` : '');
+  }
 
   function dateOf(rec) {
     const m = String(rec.version || '').match(/^(\d{4})(\d{2})(\d{2})/);
@@ -381,6 +392,18 @@
     return rows.find((r) => r && r.name === name && r.version === version) || null;
   }
 
+  /**
+   * hitCount/hitTs live only on the public gdrq- record — the private file itself never carries them. A gumdrop
+   * saved as private never had one posted, so there's nothing to find; that's an expected outcome, not an error.
+   */
+  async function findPublicStats(name, version, mdId) {
+    const d = await zz('zzGetQ', 'Collections/zenGet', {
+      query: { group: SETTINGS.group, name: `gdrq-${name}-${version}-${mdId}`, limit: 1 }, auth: false,
+    });
+    const rec = (Array.isArray(d?.response) ? d.response : []).map(flat).find((r) => r && r.mdId === mdId);
+    return rec ? { hitCount: rec.hitCount ?? 0, hitTs: rec.hitTs ?? null } : null;
+  }
+
   // Saves a gumdrop and returns the saved private record, exactly as zenPost handed it back — no re-fetch needed.
   async function saveGumdrop(v) {
     const priv = { type: v.type, name: v.name, md: v.md, version: v.version, mdId: v.mdId, author: v.author };
@@ -398,7 +421,8 @@
     // 2) the searchable entry — skipped entirely for a private save. Still public when it IS posted (never
     // sends publicAuthCd): the point of the toggle is to opt out of the index, not to make this entry auth-scoped.
     if (!v.isPrivate) {
-      const pub = { author: maskUser(v.author), type: v.type, name: v.name, version: v.version, mdId: v.mdId };
+      // hitTs/hitCount start at null/0; the backend updates them on access, this app never writes to them again
+      const pub = { author: maskUser(v.author), type: v.type, name: v.name, version: v.version, mdId: v.mdId, hitTs: null, hitCount: 0 };
       const b = await zz('zzPostQ', 'Collections/zenPost', {
         query: { group: SETTINGS.group, name: `gdrq-${v.name}-${v.version}-${v.mdId}` }, body: { json: pub }, auth: false,
       });
@@ -710,6 +734,7 @@
         .map((r) => ({
           name: esc(r.name), version: esc(r.version), type: esc(r.type || '—'), author: esc(r.author || '—'),
           mdId: esc(r.mdId), mdIdShort: esc(String(r.mdId).slice(0, 8)), mdUrl: esc(mdUrlOf(r.name, r.mdId)),
+          hits: esc(hitsLabel(r)),
         }));
       if (!rows.length) {
         out.innerHTML = `<div class="empty"><i class="fa-regular fa-face-meh"></i><p>No gumdrops matched &ldquo;${esc(v.q)}&rdquo;.</p></div>`;
@@ -760,32 +785,10 @@
     loadHomeGumdrops();   // secondary content — doesn't block the route or the hero
   }
 
-  // Signed in: your own gumdrops, found the same way loadLibrary discovers them (search by userhash — see its
-  // comment), deduped to one row per name (latest version). This is the same full record loadLibrary gets, so
-  // no per-item fetch is needed here either.
-  async function fetchMyRecent() {
-    if (!state.session?.userhash) return [];
-    const d = await zz('zzHomeMine', 'Collections/zenSearch', { query: { q: state.session.userhash } });
-    if (!d?.success) return [];
-    const hits = (Array.isArray(d.response) ? d.response : [])
-      .map(flat).filter((r) => r && r.mdId && r.name && r.version);
-    const byName = new Map();
-    for (const h of hits) {
-      const prev = byName.get(h.name);
-      if (!prev || cmpVersion(h.version, prev.version) > 0) byName.set(h.name, h);
-    }
-    return [...byName.values()]
-      .sort((a, b) => zTs(b) - zTs(a))
-      .slice(0, 5)
-      .map((r) => ({
-        name: esc(r.name), type: esc(r.type || '—'), version: esc(r.version), author: esc(r.author || state.session.user),
-        href: `#/gumdrops/${encodeURIComponent(r.name)}/${encodeURIComponent(r.mdId)}`, target: '',
-      }));
-  }
-
   // The most recent public entries, across every gumdroprepo user — "gdrq-" is the shared prefix every public
-  // record's zen name carries, so it matches the whole index; sort=desc orders newest first. This runs whether
-  // or not the viewer is signed in, and still sends publicAuthCd when they are (every search call does now).
+  // record's zen name carries, so it matches the whole index; sort=desc orders newest first. Always public: the
+  // homepage shows the same feed whether or not the viewer is signed in (still sends publicAuthCd when they are,
+  // since every search call does now — it just doesn't change what this particular query matches).
   async function fetchPublicRecent() {
     const d = await zz('zzHomeRecent', 'Collections/zenSearch', { query: { q: 'gdrq-', sort: 'desc' } });
     if (!d?.success) return [];
@@ -794,28 +797,19 @@
       .map(flat).filter((r) => r && r.mdId && r.name && r.version && !seen.has(r.mdId) && seen.add(r.mdId));
     return hits.slice(0, 8).map((r) => ({
       name: esc(r.name), type: esc(r.type || '—'), version: esc(r.version), author: esc(r.author || '—'),
-      href: esc(mdUrlOf(r.name, r.mdId)), target: 'target="_blank" rel="noopener"',
+      mdId: esc(r.mdId), mdUrl: esc(mdUrlOf(r.name, r.mdId)), hits: esc(hitsLabel(r)),
     }));
   }
 
   async function loadHomeGumdrops() {
     const token = state.token;
-    const head = $('#homeGumdropsHead');
-    const cta = $('#homeGumdropsCta');
     const body = $('#homeGumdropsBody');
     if (!body) return;   // navigated away before this ran
-    const signedIn = !!state.session?.userhash;
-    head.innerHTML = signedIn ? '<i class="fa-solid fa-candy-cane"></i> Your gumdrops' : '<i class="fa-solid fa-clock-rotate-left"></i> Recently added';
-    cta.innerHTML = signedIn
-      ? '<a href="#/gumdrops">View all <i class="fa-solid fa-arrow-right"></i></a>'
-      : '<button class="link" type="button" data-act="search">Search all <i class="fa-solid fa-arrow-right"></i></button>';
     try {
-      const rows = signedIn ? await fetchMyRecent() : await fetchPublicRecent();
+      const rows = await fetchPublicRecent();
       if (stale(token)) return;
       if (!rows.length) {
-        body.innerHTML = signedIn
-          ? '<div class="empty"><i class="fa-regular fa-face-smile"></i><p>Nothing here yet. <a href="#/gumdrops/add">Add your first gumdrop</a>.</p></div>'
-          : '<div class="empty"><i class="fa-regular fa-compass"></i><p>No public gumdrops yet. <a href="#/gumdrops/add">Be the first to add one</a>.</p></div>';
+        body.innerHTML = '<div class="empty"><i class="fa-regular fa-compass"></i><p>No public gumdrops yet. <a href="#/gumdrops/add">Be the first to add one</a>.</p></div>';
         return;
       }
       await paint('#homeGumdropsBody', 'tplHomeGumdrops', { homeRows: rows });
@@ -844,9 +838,9 @@
     if (!(await needLibrary(token))) return;
     setTitle('Your gumdrops');
     const rows = state.groups.map((g) => ({
-      name: esc(g.name), nameUrl: encodeURIComponent(g.name), type: esc(g.latest.type || '—'),
+      name: esc(g.name), nameUrl: encodeURIComponent(g.name), mdId: esc(g.latest.mdId), type: esc(g.latest.type || '—'),
       latest: esc(g.latest.version), countLabel: `${g.versions.length} version${g.versions.length === 1 ? '' : 's'}`,
-      updated: esc(dateOf(g.latest)), author: esc(g.latest.author || '—'),
+      updated: esc(dateOf(g.latest)), author: esc(g.latest.author || '—'), mdUrl: esc(mdUrlOf(g.latest.name, g.latest.mdId)),
     }));
     await paint('#view', 'tplList', { gumdropRows: rows });
     $('#listEmpty').hidden = rows.length > 0;
@@ -887,6 +881,21 @@
     $('#mdText').textContent = rec.md;   // the file body is never run through innerHTML
     const short = (store.get(SHORT_KEY) || {})[rec.mdId];
     if (short) { $('#shortUrl').value = short; $('#shortBtn').innerHTML = '<i class="fa-regular fa-copy"></i> Copy'; }
+    loadDetailStats(token, rec);   // secondary — doesn't block the main render
+  }
+
+  // Fills in the public hit-tracking stats after the main detail render, since they live on a separate record
+  // (findPublicStats) that a private gumdrop never had posted in the first place.
+  async function loadDetailStats(token, rec) {
+    const el = $('#detailHits');
+    if (!el) return;
+    try {
+      const stats = await findPublicStats(rec.name, rec.version, rec.mdId);
+      if (stale(token) || !$('#detailHits')) return;
+      $('#detailHits').textContent = stats ? hitsLabel(stats) : 'Not tracked — kept private';
+    } catch (e) {
+      if (!stale(token) && $('#detailHits')) $('#detailHits').textContent = '—';
+    }
   }
 
   function gumdropLines({ mdId, author, type, version }) {
