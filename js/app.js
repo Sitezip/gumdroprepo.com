@@ -803,11 +803,11 @@
   }
 
   // The most recent public entries, across every gumdroprepo user — "gdrq-" is the shared prefix every public
-  // record's zen name carries, so it matches the whole index; sort=desc orders newest first. Always public: the
-  // homepage shows the same feed whether or not the viewer is signed in (still sends publicAuthCd when they are,
-  // since every search call does now — it just doesn't change what this particular query matches).
+  // record's zen name carries, so it matches the whole index; sort=desc orders newest first. Always public and
+  // always anonymous: the homepage shows the same feed whether or not the viewer is signed in, and a public
+  // records search has no business carrying publicAuthCd (same reasoning as the "Search gumdrops" modal).
   async function fetchPublicRecent() {
-    const d = await zz('zzHomeRecent', 'Collections/zenSearch', { query: { q: 'gdrq-', sort: 'desc' } });
+    const d = await zz('zzHomeRecent', 'Collections/zenSearch', { query: { q: 'gdrq-', sort: 'desc' }, auth: false });
     if (!d?.success) return [];
     const seen = new Set();
     const hits = (Array.isArray(d.response) ? d.response : [])
