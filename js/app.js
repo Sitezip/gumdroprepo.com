@@ -362,10 +362,10 @@
     return groups;
   }
 
-  // YYYYMMDD.n, where n counts up from the highest n already used today for this name
+  // YYYYMMDD.n, where n counts up from 0 — the first version of a name on a given day is .0, not .1
   function nextVersion(name) {
     const day = ymd();
-    let n = 0;
+    let n = -1;
     for (const r of state.library) {
       if (r.name !== name) continue;
       const m = String(r.version).match(new RegExp('^' + day + '\\.(\\d+)$'));
@@ -942,7 +942,7 @@
       try { await ensureLibrary(); } catch (e) { /* not fatal for adding */ }
     }
     setTitle(isEdit ? `Edit ${name}` : 'Add a gumdrop');
-    const version = isEdit ? nextVersion(name) : draft ? nextVersion(draft.name) : `${ymd()}.1`;
+    const version = isEdit ? nextVersion(name) : draft ? nextVersion(draft.name) : `${ymd()}.0`;
     const note = isEdit
       // the version bump, and which version it's copied from, called out explicitly rather than left implicit
       ? `Editing <b>${esc(name)}</b> v${esc(rec.version)}. Saving will create <b>v${esc(version)}</b> with its own id &mdash; v${esc(rec.version)} stays in the history unchanged.`
@@ -1027,7 +1027,7 @@
       bad = true;
     }
     if (!VERSION_RE.test(v.version)) {
-      fieldError(form, 'version', 'Use letters, numbers, dots, dashes or underscores, e.g. ' + ymd() + '.1');
+      fieldError(form, 'version', 'Use letters, numbers, dots, dashes or underscores, e.g. ' + ymd() + '.0');
       bad = true;
     }
     if (!bad && state.library.some((r) => r.name === v.name && r.version === v.version)) {
