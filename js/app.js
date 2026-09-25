@@ -44,6 +44,12 @@
   if (['localhost', '127.0.0.1'].includes(location.hostname)) SETTINGS.group += '-sandbox';
   SETTINGS.mdBase = 'https://md.' + SETTINGS.viewDomainAs;
   SETTINGS.formsUrl = SETTINGS.api + '/Forms/dynamic';
+  // gdrq- (public index) records live in their own flagged group (ZZZAP.md §4.7): anonymous callers
+  // get Create+Read only, never Update/Delete; an authenticated caller (server-side only — this app
+  // never posts a gdrq- record with publicAuthCd) still gets full CRUD. The gdrapp- private file
+  // records are unaffected, on the plain SETTINGS.group. This flagged string is also the exact
+  // address the record was created under — every later lookup of a gdrq- record must reuse it as-is.
+  SETTINGS.publicGroup = SETTINGS.group + '[CRXXCRUD]';
 
   const PUBLIC_AUTH_CD_NAME = '85ad6f95-aed610e06a6db0612-fefa6ae';
   const SESSION_KEY = 'gdrSession';   // core.cr tier 3 (localStorage)
@@ -412,7 +418,7 @@
    */
   async function findPublicStats(name, version, mdId) {
     const d = await zz('zzGetQ', 'Collections/zenGet', {
-      query: { group: SETTINGS.group, name: `gdrq-${name}-${version}-${mdId}`, limit: 1 }, auth: false,
+      query: { group: SETTINGS.publicGroup, name: `gdrq-${name}-${version}-${mdId}`, limit: 1 }, auth: false,
     });
     const rec = (Array.isArray(d?.response) ? d.response : []).map(flat).find((r) => r && r.mdId === mdId);
     return rec ? { hitCount: rec.hitCount ?? 0, hitTs: rec.hitTs ?? null } : null;
@@ -438,7 +444,7 @@
       // hitTs/hitCount start at null/0; the backend updates them on access, this app never writes to them again
       const pub = { author: maskUser(v.author), type: v.type, name: v.name, version: v.version, mdId: v.mdId, hitTs: null, hitCount: 0 };
       const b = await zz('zzPostQ', 'Collections/zenPost', {
-        query: { group: SETTINGS.group, name: `gdrq-${v.name}-${v.version}-${v.mdId}` }, body: { json: pub }, auth: false,
+        query: { group: SETTINGS.publicGroup, name: `gdrq-${v.name}-${v.version}-${v.mdId}` }, body: { json: pub }, auth: false,
       });
       if (!b?.success) {
         if (saved.zen) { try { await zz('zzDelMd', 'Collections/zenDelete', { query: { zen: saved.zen } }); } catch (e) { /* best effort */ } }
